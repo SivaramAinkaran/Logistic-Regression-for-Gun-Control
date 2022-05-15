@@ -1,0 +1,191 @@
+---
+title: "Logistic Regression Analysis - Gun Control"
+author: "Sivaram Ainkaran"
+date: "01/09/2021"
+output:
+  pdf_document: default
+  html_document: default
+editor_options:
+  chunk_output_type: inline
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(tidyr)
+library(dplyr)
+
+
+load("gss.RData")
+gss %>%
+filter(year==2004,
+hgunlaw %in% c("AGREE", "DISAGREE")) %>%
+select(age, sex, attend, relig, partyid, hgunlaw) %>%
+mutate(guncontrol=(hgunlaw=="AGREE")) ->
+guns
+#attend = frequency they attend religious ceromonies
+#partyid = the political party they support
+#hgunlaw AGREE = agree with harsher gun control
+#guncontrol TRUE = agree with harsher gun control
+
+```
+
+1.
+
+```{r, echo=FALSE}
+hgunlaw_tot <- gss$hgunlaw
+
+gunlaw_count1 <- sum(str_count(hgunlaw_tot, "AGREE"))
+gunlaw_count2 <- sum(str_count(hgunlaw_tot, "DISAGREE"))
+gunlaw_count3 <- sum(str_count(hgunlaw_tot, "IAP"))
+gunlaw_count <- c("TOTAL"=length(hgunlaw_tot), "Agree"=gunlaw_count1, "Disagree"=gunlaw_count2, "IAP"=gunlaw_count3)
+gunlaw_count
+
+```
+Since we want to see the personal and religious  characteristics of people who are against gun control in this assignment, we only want to see characteristics of people who answered the survey questions regarding gun control as being against or for gun control. As can be seen here, out of the 62,466 surveyed, 60,774 of them did not have an opinion or did not answer this question while only 1,692 answered. This would skew the data greatly if left in, and in general just does not provide relevant data. This is why it is reasonable and most likely beneficial to leave out “IAP”, “DONT KNOW” values in this case.
+
+2. a)
+```{r}
+#age to numeric
+guns <- guns %>%  mutate(age=as.numeric(age))
+
+```
+I converted the "age" variable to a numeric variable.
+
+2. b)
+```{r}
+#Gathering NA, DK, NONE, IAP to 1 variable
+levels(guns$attend)
+
+guns$attend <- recode_factor(guns$attend, "DK,NA"="NA")
+guns$relig <- recode_factor(guns$relig, "NA"="NA", "NONE"="NA", "DK"="NA", "IAP"="NA")
+guns$partyid <- recode_factor(guns$partyid, "DK"="NA", "DK"="NA")
+
+```
+Using the recode_factor() function I converted all values which are not helpful to the data (ie. DONT KNOW, NA, IAP AND DK) to one single variable "NA".
+
+
+2. c)
+```{r}
+#convert "NA" to missing values
+guns$attend[guns$attend == "NA"]<- NA
+guns$relig[guns$relig == "NA"]<- NA
+guns$partyid[guns$partyid == "NA"]<- NA
+
+```
+Here I converted all the values in the "NA" variable to a missing value NA.
+
+
+2. d)
+```{r, include=FALSE, echo=FALSE}
+
+table(guns$attend)
+table(guns$relig) 
+table(guns$partyid)
+
+#Combine smaller/similar categories
+    #"2-3X A MONTH"+"NRLY EVERY WEEK" = "NRLY EVERY WEEK"
+    #"EVERY WEEK"+"MORE THN ONCE WK" = "AT LEAST ONCE WK
+    guns$attend <- recode_factor(guns$attend, "2-3X A MONTH"="NRLY EVERY WEEK", "EVERY WEEK"="AT LEAST ONCE WK", "MORE THN ONCE WK"="AT LEAST ONCE WK")
+
+    #"OTHER" AND "OTHER EASTERN" and "CHRISTIAN" AND "ORTHODOX CHRISTIAN" although similar,       display a different background in the surveyee and should be left separate to identify        religious patterns.
+    #"OTHER" + "NATIVE AMERICAN"= "OTHER"
+    #"CHRISTIAN"+"INTER-NONDENOMINATIONAL"="CHRISTIAN"
+    guns$relig <- recode_factor(guns$relig, "NATIVE AMERICAN"="OTHER")
+    guns$relig <- recode_factor(guns$relig, "INTER-NONDENOMINATIONAL"="CHRISTIAN")
+      
+    #"NOT STR DEMOCRAT"+"IND, NEAR DEM" = "NOT STR DEMOCRAT"
+    #"NOT STR REPUBLICAN" + "IND, NEAR REP"
+    guns$partyid <- recode_factor(guns$partyid, "IND,NEAR DEM" = "NOT STR DEMOCRAT", "IND,NEAR REP" = "NOT STR REPUBLICAN")
+```
+Using the table() function to identify quantities of votes for each category in each question, I identified variables that could be merged into one variable. 
+
+In the "attend" question, I combined the "2-3X A MONTH" variable with the "NEARLY EVERY WEEK" variable since they both mean similar values, with nearly every week being 2-4 times a month. I also combined "EVERY WEEK" and "MORE THAN ONCE WK" into "AT LEAST ONCE A WK" since most people who attend religious ceremonies at least once a week would have similar values.
+
+In the "relig" question, I combined the "NATIVE AMERICAN" variable with "OTHER" since there were no votes for "NATIVE AMERICAN". I also combined the "CHRISTIAN" and "INTER-NONDENOMINATIONAL" variables into one, since both would identify as Christian and would hold similar values.
+
+In the "partyid" question, I combined the "IND,NEAR DEM" and "NOT STR DEMOCRAT" variables into "NOT STR DEMOCRAT" since both types of people would have similar values and opinions. I used the same thought process for "IND,NEAR REP" and "NOT STR REPUBLICAN".
+
+
+2. e)
+```{r}
+#ordering ordered categories
+
+guns$attend <- ordered(guns$attend, levels=c("AT LEAST ONCE WK", "NRLY EVERY WEEK", "ONCE A MONTH", "SEVRL TIMES A YR", "ONCE A YEAR", "LT ONCE A YEAR", "NEVER", "NA"))
+
+```
+Here I ordered the "attend" question from highest to lowest attendance.
+
+
+2. f)
+```{r}
+#droplevel
+
+guns$attend <- droplevels(guns$attend, "NA")
+guns$relig <- droplevels(guns$relig, "NA")
+guns$partyid <- droplevels(guns$partyid, "NA")
+guns$hgunlaw <- droplevels(guns$hgunlaw, "DONT KNOW", "NA")
+
+```
+
+Here, all variables except "NA" and "DONT KNOW" were used (since i combined "NATIVE AMERICAN" an "OTHER"), so I dropped those levels that were not being used.
+
+
+
+3.
+
+```{r, echo=FALSE}
+
+ggplot(guns, aes(guncontrol, ..count..)) + geom_bar(aes(fill = sex), position = "dodge")
+```
+From this plot we can see, that although there was a similar number of males and females surveyed about this question, a higher proportion of females were for gun control compared to those who were not. Males on the other hand had a similar proportion (even though more voted for gun control) voting for and against gun control. This shows that males are a higher proponent of gun use than women.
+
+
+4.
+```{r, echo=FALSE}
+
+lmod <- glm(guncontrol ~ age + sex + attend + relig + partyid, family=binomial,
+data=guns)
+drop1(lmod, test="Chisq")
+
+```
+This Chi-squared test on the logistic regression shows that sex and the person's political views are very significant, with p-values approaching 0. Religion also has a p-value below the 0.05 significance level showing that it is also significant in predicting whether the individual will be for or against greater gun control. Age and a person's frequency of attendance to religious ceremonies seems to not have as great an effect on their opinions on gun control though, with both p-values being over 0.05. A better model would not include "age" and "attend" as predictors of "guncontrol".
+
+5.
+```{r, echo=FALSE}
+lmod_int <- glm(guncontrol ~ age:sex + sex + relig + partyid, family=binomial,
+data=guns) 
+drop1(lmod_int, test="Chisq")
+```
+
+The interaction between age and sex does not seem to be significant in determining a person's position on increased gun control due to its high p-value which is very close to 1.
+
+
+6.
+```{r, echo=FALSE}
+lmod_fin <- glm(guncontrol ~ sex + relig + partyid, family=binomial,
+data=guns)
+
+prop_sex <- table(guns$guncontrol, guns$sex)
+prop.table(prop_sex, 2)
+
+prop_relig <- table(guns$guncontrol, guns$relig)
+prop.table(prop_relig, 2)
+
+prop_partyid <- table(guns$guncontrol, guns$partyid)
+prop.table(prop_partyid, 2)
+```
+
+From these 3 proportion tables, we can see that Males have the highest probability of being opposed to greater gun control and females have the lowest in "sex". 
+
+In "relig", Protestants have the highest probability of being opposed to greater gun control and although Hindus, Orthodox-Christians and Muslims all have a 0 probability to being opposed to gun control in this survey, Muslims had the highest turnout at 8 participants compared to 4 Hindus and 3 Orthodox-Christians. This means Muslims would be the best choice for the lowest probability subset which would be against gun control.
+
+In "partyid" although the "NA" group did have the highest proportion against stricter gun laws, they only had 5 participants, whereas Strong republicans had 175 participants, 58.3% of who voted that they would be against stricted gun laws. The 60% for the "NA" group cannot be taken into account in this case since the numbers are so small compared to the amount of Strong Republicans, meaning Strong Republicans would have the highest probability of being against stricter gun laws. On the other hand, Strong Democrats seem to have the lowest proportion of whom are against stricter gun laws.
+
+This indicates that a Male Protestant who is a Strong Republican would be the subset have the highest probability of being against stricter gun laws and a Female Muslim who is a Strong Democrat would be the subset with the lowest probability of being for stricter gun laws
+
+
+
+
+
+
